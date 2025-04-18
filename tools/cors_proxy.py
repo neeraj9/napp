@@ -1,3 +1,4 @@
+# (c) 2025 Neeraj Sharma
 # LICENSE: MIT
 
 # Dependencies

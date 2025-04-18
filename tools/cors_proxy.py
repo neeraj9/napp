@@ -21,7 +21,7 @@
 # ```
 
 
-# A generic CORS proxy, which is companion to some of the tools available
+# A simple CORS proxy, which is companion to some of the tools available
 # on https://napp.pro. You can inspect the requests and responses for any
 # security concerns.
 #

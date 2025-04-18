@@ -32,6 +32,7 @@
 # 2. Meilisearch:
 #    - HTTP GET - /indexes
 #    - HTTP GET, POST, PUT, PATCH, DELETE - /indexes/
+#    - HTTP GET - /version, /health, /stats
 #
 # Note: You should also use browser developer inspect tools to look at
 # any of the web tools available on https://napp.pro to ensure that
@@ -98,7 +99,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             if path.startswith('/Crawler_p.html'):
                 self._handle_yacy_api(origin, path, 'get')
-            elif path == '/indexes' or path.startswith('/indexes?') or path.startswith('/indexes/'):
+            elif path in ['/version', '/health', '/stats'] or path == '/indexes' or path.startswith('/indexes?') or path.startswith('/indexes/'):
+                # NOTE: ['/version', '/health', '/stats'] are generic, but required by meiliadmin web-tool to work.
+                # We can either think about using a separate proxy just for meilisearch or route these generic api endpoints
+                # just to meilisearch server.
                 self._handle_meilisearch_request(origin, path, 'get')
             else:
                 logging.error('Invalid path')

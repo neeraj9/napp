@@ -202,7 +202,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         target_url = f'{ProxyHandler.meilisearch_target_server}{path}'
         logging.info(f'Forwarding HTTP {http_request} request to {target_url}')
         api_key_patched = False
-        for k,v in self.headers.items():
+        for k in self.headers.keys():
             if k.lower() == 'authorization':
                 self.headers[k] = f'Bearer {ProxyHandler.meilisearch_api_key}'
                 api_key_patched = True

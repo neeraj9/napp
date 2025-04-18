@@ -51,6 +51,7 @@ from dotenv import load_dotenv
 import os
 import requests
 from requests.auth import HTTPDigestAuth
+from io import BytesIO
 
 # Load environment variables from .env file
 load_dotenv()
@@ -200,43 +201,16 @@ class ProxyHandler(BaseHTTPRequestHandler):
         """
         target_url = f'{ProxyHandler.meilisearch_target_server}{path}'
         logging.info(f'Forwarding HTTP {http_request} request to {target_url}')
-        try:
-            api_key_patched = False
-            for k,v in self.headers.items():
-                if k.lower() == 'authorization':
-                    self.headers[k] = f'Bearer {ProxyHandler.meilisearch_api_key}'
-                    api_key_patched = True
-                    break
-            if not api_key_patched:
-                self.headers['authorization'] = f'Bearer {ProxyHandler.meilisearch_api_key}'
-            if http_request == 'get':
-                response = requests.get(target_url, headers=self.headers)
-            elif http_request == 'post':
-                response = requests.post(target_url, data=payload, headers=self.headers)
-            elif http_request == 'put':
-                response = requests.put(target_url, data=payload, headers=self.headers)
-            elif http_request == 'patch':
-                response = requests.patch(target_url, data=payload, headers=self.headers)
-            elif http_request == 'delete':
-                response = requests.delete(target_url, headers=self.headers)
-            else:
-                response = requests.get(target_url, headers=self.headers)
-            response_data = response.content
-            logging.debug(f'Response from {target_url}: {response_data}')
-            self.send_response(200)
-            for k, v in response.headers.items():
-                if k.lower() == 'access-control-allow-origin':
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    # self.send_header('Access-Control-Allow-Origin', origin)
-                else:
-                    self.send_header(k, v)
-            self.end_headers()
-            self.wfile.write(response_data)
-        except Exception as e:
-            logging.error(f'Error forwarding request: {e}')
-            self.send_response(500)
-            self.end_headers()
-            self.wfile.write(b'Internal Server Error')
+        api_key_patched = False
+        for k,v in self.headers.items():
+            if k.lower() == 'authorization':
+                self.headers[k] = f'Bearer {ProxyHandler.meilisearch_api_key}'
+                api_key_patched = True
+                break
+        if not api_key_patched:
+            self.headers['authorization'] = f'Bearer {ProxyHandler.meilisearch_api_key}'
+
+        self._handle_generic_forward(target_url, http_request, payload)
 
     def _handle_yacy_api(self, origin, path, http_request, payload=None):
         """
@@ -247,54 +221,76 @@ class ProxyHandler(BaseHTTPRequestHandler):
         See https://www.digitalocean.com/community/tutorials/how-to-configure-yacy-as-an-alternative-search-engine-or-site-search-tool
         """
         target_url = f'{ProxyHandler.yacy_target_server}{path}'
+        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
+                            ProxyHandler.yacy_password)
+        self._handle_generic_forward(target_url, http_request, payload, auth)
+
+    def _handle_generic_forward(self, target_url, http_request, payload=None, auth=None):
         logging.info(f'Forwarding request to {target_url}')
 
         try:
             if http_request == 'get':
                 response = requests.get(target_url,
+                                        stream=True,
                                         headers=self.headers,
-                                        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
-                                                            ProxyHandler.yacy_password))
+                                        auth=auth)
             elif http_request == 'post':
                 response = requests.post(target_url,
+                                         stream=True,
                                          data=payload,
                                          headers=self.headers,
-                                         auth=HTTPDigestAuth(ProxyHandler.yacy_username,
-                                                            ProxyHandler.yacy_password))
+                                         auth=auth)
             elif http_request == 'put':
                 response = requests.put(target_url,
+                                        stream=True,
                                         data=payload,
                                         headers=self.headers,
-                                        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
-                                                            ProxyHandler.yacy_password))
+                                        auth=auth)
             elif http_request == 'patch':
                 response = requests.patch(target_url,
+                                          stream=True,
                                         data=payload,
                                         headers=self.headers,
-                                        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
-                                                            ProxyHandler.yacy_password))
+                                        auth=auth)
             elif http_request == 'delete':
                 response = requests.delete(target_url,
+                                           stream=True,
                                            headers=self.headers,
-                                           auth=HTTPDigestAuth(ProxyHandler.yacy_username,
-                                                                ProxyHandler.yacy_password))
+                                           auth=auth)
             else:
                 response = requests.get(target_url,
+                                        stream=True,
                                         headers=self.headers,
-                                        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
-                                                            ProxyHandler.yacy_password))
+                                        auth=auth)
 
-            response_data = response.content
-            # logging.debug(f'Response from {target_url}: {response_data}')
             self.send_response(200)
             for k, v in response.headers.items():
-                if k.lower() == 'access-control-allow-origin':
+                lower_key = k.lower()
+                lower_value = v.lower()
+                if lower_key == 'access-control-allow-origin':
                     self.send_header('Access-Control-Allow-Origin', '*')
                     # self.send_header('Access-Control-Allow-Origin', origin)
+                elif lower_key in ['server', 'date']:
+                    # note that self.send_response(200) sends server and date header
+                    # already, so skip those
+                    pass
+                elif lower_key == 'transfer-encoding' and lower_value == 'chunked':
+                    # chunked transfer encoding response is unsupported at present
+                    pass
                 else:
+                    # logging.debug(f'header: {k} = {v}')
                     self.send_header(k, v)
             self.end_headers()
-            self.wfile.write(response_data)
+            # handle case when Content-Encoding = gzip, so decode_content=False
+            # and stream=True when making request earlier.
+            buffer = BytesIO()
+            for chunk in response.raw.stream(2**8, decode_content=False):
+                buffer.write(chunk)
+            buffer.seek(0)
+            self.wfile.write(buffer.read())
+            # response_data = response.content
+            # logging.debug(f'Response from {target_url}: {response_data}')
+            # self.wfile.write(response_data)
         except Exception as e:
             logging.error(f'Error forwarding request: {e}')
             self.send_response(500)

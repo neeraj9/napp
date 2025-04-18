@@ -31,7 +31,7 @@
 # 1. Yacy server:
 #    - HTTP GET /Crawler_p.html
 # 2. Meilisearch:
-#    - HTTP GET - /indexes
+#    - HTTP GET, POST - /indexes
 #    - HTTP GET, POST, PUT, PATCH, DELETE - /indexes/
 #    - HTTP GET - /version, /health, /stats
 #
@@ -144,7 +144,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             payload = self.rfile.read(content_length)
 
-            if path.startswith('/indexes/'):
+            if path == '/indexes' or path.startswith('/indexes/'):
                 self._handle_meilisearch_request(origin, path, 'post', payload)
             else:
                 logging.error('Invalid path')

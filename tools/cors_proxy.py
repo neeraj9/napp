@@ -43,11 +43,7 @@
 #
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import urllib.request
-import urllib.parse
-import base64
 import logging
-import json
 from dotenv import load_dotenv
 import os
 import requests
@@ -75,16 +71,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
         origin = self.headers.get('Origin')
         if origin in ProxyHandler.allowed_origins:
             self.send_response(204)
-            self.send_header('Access-Control-Allow-Origin', origin)
-            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-            # self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-            self.send_header('Access-Control-Allow-Headers', 'Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers, Authorization')
             #self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header('Access-Control-Allow-Origin', origin)
             #self.send_header("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT")
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers, Authorization')
+            self.send_header("Access-Control-Allow-Credentials", "true")
             self.end_headers()
         else:
-            print(f"Forbidden")
             self.send_response(403)
             self.end_headers()
             self.wfile.write(b'Forbidden')
@@ -92,67 +86,45 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         origin = self.headers.get('Origin')
         if origin in ProxyHandler.allowed_origins:
-            self.send_response(200)
-            self.send_header('Access-Control-Allow-Origin', origin)
-            self.end_headers()
-
-            # Determine the target URL
             path = self.path
-            if not path.startswith('/Crawler_p.html'):
+
+            if path.startswith('/Crawler_p.html'):
+                self._handle_yacy_crawler_p_api(origin, path)
+            else:
                 logging.error('Invalid path')
                 self.send_response(404)
                 self.end_headers()
                 self.wfile.write(b'Not Found')
-                return
-
-            target_url = f'{ProxyHandler.yacy_target_server}{path}'
-            logging.info(f'Forwarding request to {target_url}')
-
-            # # Prepare the request
-            # req = urllib.request.Request(target_url, headers=self.headers)
-            # # Override the Authorization header with the configured Basic Auth
-            # basic_http_username = urllib.parse.quote_plus(ProxyHandler.yacy_username)
-            # basic_http_password = urllib.parse.quote_plus(ProxyHandler.yacy_password)
-            # auth_string = f'{basic_http_username}:{basic_http_password}'
-            # print(f'auth_string = {auth_string}')
-            # auth_base64 = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
-            # target_server_req_auth_header = f'Basic {auth_base64}'
-            # print(f'target_server_req_auth_header = {target_server_req_auth_header}')
-            # req.add_header('Authorization', target_server_req_auth_header)
-
-            # try:
-            #     with urllib.request.urlopen(req) as response:
-            #         response_data = response.read()
-            #         logging.info(f'Response from {target_url}: {response_data}')
-            #         self.wfile.write(response_data)
-            # except Exception as e:
-            #     logging.error(f'Error forwarding request: {e}')
-            #     self.send_response(500)
-            #     self.end_headers()
-            #     self.wfile.write(b'Internal Server Error')
-            try:
-                response = requests.get(target_url,
-                                        headers=self.headers,
-                                        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
-                                                            ProxyHandler.yacy_password))
-                response_data = response.content
-                logging.info(f'Response from {target_url}: {response_data}')
-                self.wfile.write(response_data)
-            except Exception as e:
-                logging.error(f'Error forwarding request: {e}')
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(b'Internal Server Error')
         else:
             self.send_response(403)
             self.end_headers()
             self.wfile.write(b'Forbidden')
 
+    def _handle_yacy_crawler_p_api(self, origin, path):
+        target_url = f'{ProxyHandler.yacy_target_server}{path}'
+        logging.info(f'Forwarding request to {target_url}')
+
+        try:
+            response = requests.get(target_url,
+                                        headers=self.headers,
+                                        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
+                                                            ProxyHandler.yacy_password))
+            response_data = response.content
+            logging.info(f'Response from {target_url}: {response_data}')
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.end_headers()
+            self.wfile.write(response_data)
+        except Exception as e:
+            logging.error(f'Error forwarding request: {e}')
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b'Internal Server Error')
+
 def run(server_class=HTTPServer, handler_class=ProxyHandler, port=PROXY_PORT, host=PROXY_HOST):
     server_address = (host, port)
-    print(f'server_address = {server_address}')
     httpd = server_class(server_address, handler_class)
-    print(f'Starting proxy server on host {host}, port {port}')
+    logging.info(f'Starting proxy server on host {host}, port {port}')
     httpd.serve_forever()
 
 if __name__ == '__main__':

@@ -68,6 +68,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
         logging.info("%s - - [%s] %s", self.address_string(), self.log_date_time_string(), format % args)
 
     def do_OPTIONS(self):
+        """
+        See https://fetch.spec.whatwg.org/#http-cors-protocol
+        """
         origin = self.headers.get('Origin')
         if origin in ProxyHandler.allowed_origins:
             self.send_response(204)
@@ -79,6 +82,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Credentials", "true")
             self.end_headers()
         else:
+            logging.error(f'Rejecting OPTIONS for origin = {origin}')
             self.send_response(403)
             self.end_headers()
             self.wfile.write(b'Forbidden')
@@ -96,11 +100,19 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b'Not Found')
         else:
+            logging.error(f'Rejecting GET for origin = {origin}')
             self.send_response(403)
             self.end_headers()
             self.wfile.write(b'Forbidden')
 
     def _handle_yacy_crawler_p_api(self, origin, path):
+        """
+        Yacy uses HTTP Digest authentication.
+
+        See https://github.com/yacy/yacy_search_server/issues/354
+        See https://yacy.net/api/crawler/
+        See https://www.digitalocean.com/community/tutorials/how-to-configure-yacy-as-an-alternative-search-engine-or-site-search-tool
+        """
         target_url = f'{ProxyHandler.yacy_target_server}{path}'
         logging.info(f'Forwarding request to {target_url}')
 

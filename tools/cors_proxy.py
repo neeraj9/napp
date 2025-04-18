@@ -29,7 +29,9 @@
 #
 # 1. Yacy server:
 #    - HTTP GET /Crawler_p.html
-#
+# 2. Meilisearch:
+#    - HTTP GET - /indexes
+#    - HTTP GET, POST, PUT, DELETE - /indexes/
 #
 # Note: You should also use browser developer inspect tools to look at
 # any of the web tools available on https://napp.pro to ensure that

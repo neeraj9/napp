@@ -170,6 +170,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.wfile.write(b'Forbidden')
 
     def _handle_meilisearch_request(self, origin, path, http_request, payload=None):
+        """
+
+        See https://www.meilisearch.com/docs/reference/api/settings#stop-words
+        """
         target_url = f'{ProxyHandler.meilisearch_target_server}{path}'
         logging.info(f'Forwarding HTTP {http_request} request to {target_url}')
         try:

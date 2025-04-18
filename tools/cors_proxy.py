@@ -31,7 +31,7 @@
 #    - HTTP GET /Crawler_p.html
 # 2. Meilisearch:
 #    - HTTP GET - /indexes
-#    - HTTP GET, POST, PUT, DELETE - /indexes/
+#    - HTTP GET, POST, PUT, PATCH, DELETE - /indexes/
 #
 # Note: You should also use browser developer inspect tools to look at
 # any of the web tools available on https://napp.pro to ensure that
@@ -80,7 +80,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
             # self.send_header('Access-Control-Allow-Origin', origin)
-            self.send_header("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT,DELETE")
+            self.send_header("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT,PATCH,DELETE")
             # self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
             self.send_header('Access-Control-Allow-Headers', 'Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers, Authorization')
             self.send_header("Access-Control-Allow-Credentials", "true")
@@ -98,7 +98,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
             if path.startswith('/Crawler_p.html'):
                 self._handle_yacy_api(origin, path, 'get')
-            elif path == '/indexes' or path.startswith('/indexes/'):
+            elif path == '/indexes' or path.startswith('/indexes?') or path.startswith('/indexes/'):
                 self._handle_meilisearch_request(origin, path, 'get')
             else:
                 logging.error('Invalid path')
@@ -151,6 +151,26 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'Forbidden')
 
+    def do_PATCH(self):
+        origin = self.headers.get('Origin')
+        if origin in ProxyHandler.allowed_origins:
+            path = self.path
+            content_length = int(self.headers['Content-Length'])
+            payload = self.rfile.read(content_length)
+
+            if path.startswith('/indexes/'):
+                self._handle_meilisearch_request(origin, path, 'patch', payload)
+            else:
+                logging.error('Invalid path')
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b'Not Found')
+        else:
+            logging.error(f'Rejecting PATCH for origin = {origin}')
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(b'Forbidden')
+
     def do_DELETE(self):
         origin = self.headers.get('Origin')
         if origin in ProxyHandler.allowed_origins:
@@ -191,6 +211,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 response = requests.post(target_url, data=payload, headers=self.headers)
             elif http_request == 'put':
                 response = requests.put(target_url, data=payload, headers=self.headers)
+            elif http_request == 'patch':
+                response = requests.patch(target_url, data=payload, headers=self.headers)
             elif http_request == 'delete':
                 response = requests.delete(target_url, headers=self.headers)
             else:
@@ -237,6 +259,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                                                             ProxyHandler.yacy_password))
             elif http_request == 'put':
                 response = requests.put(target_url,
+                                        data=payload,
+                                        headers=self.headers,
+                                        auth=HTTPDigestAuth(ProxyHandler.yacy_username,
+                                                            ProxyHandler.yacy_password))
+            elif http_request == 'patch':
+                response = requests.patch(target_url,
                                         data=payload,
                                         headers=self.headers,
                                         auth=HTTPDigestAuth(ProxyHandler.yacy_username,

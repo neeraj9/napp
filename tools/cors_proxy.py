@@ -64,7 +64,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
-    allowed_origins = os.getenv('CORS_ALLOWED_ORIGINS').split(',')
+    allowed_origins = os.getenv('CORS_ALLOWED_ORIGINS_STR').split(',')
     yacy_target_server = os.getenv('YACY_HOST_URL')
     yacy_username = os.getenv('YACY_USERNAME')
     yacy_password = os.getenv('YACY_PASSWORD')

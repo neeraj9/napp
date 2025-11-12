@@ -1,0 +1,12 @@
+{
+    "models": [
+        {
+            "name": "orieg/gemma3-tools:27b-it-qat",
+            "model": "orieg/gemma3-tools:27b-it-qat"
+        },
+        {
+            "name": "qwen3-coder:30b",
+            "model": "qwen3-coder:30b"
+        }
+    ]
+}

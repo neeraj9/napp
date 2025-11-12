@@ -56,6 +56,10 @@ class AppConfig(BaseSettings):
     MEILISEARCH_HOST_URL: Optional[str] = None
     MEILISEARCH_API_KEY: Optional[str] = None
 
+    OLLAMA_HOST_URL: str = "http://localhost:11434"
+    LITELLM_HOST_URL: str = "http://localhost:8000"
+    LITELLM_API_KEY: Optional[str] = None
+
     REQUEST_TIMEOUT: int = 30  # Timeout for outgoing requests in seconds
     LOG_LEVEL: str = "INFO"
     LOG_FILE: Optional[str] = None
@@ -147,6 +151,7 @@ else:
     auth = None
 yacy_http_client = httpx.AsyncClient(auth=auth, timeout=app_config.REQUEST_TIMEOUT, follow_redirects=True)
 meilisearch_http_client = httpx.AsyncClient(timeout=app_config.REQUEST_TIMEOUT, follow_redirects=True)
+litellm_http_client = httpx.AsyncClient(timeout=app_config.REQUEST_TIMEOUT, follow_redirects=True)
 
 @app.on_event("startup")
 async def startup_event():
@@ -158,6 +163,7 @@ async def shutdown_event():
     logger.info("Application shutdown: Closing HTTP client.")
     await yacy_http_client.aclose()
     await meilisearch_http_client.aclose()
+    await litellm_http_client.aclose()
 
 
 # --- Middleware ---
@@ -197,15 +203,24 @@ async def _forward_request(
         
         # Prepare headers for the outgoing request
         outgoing_headers = {
-            k: v for k, v in request.headers.items()
+            k.lower(): v for k, v in request.headers.items()
             if k.lower() not in ['host', 'content-length', 'transfer-encoding', 'connection']
         }
+        logger.debug(f"Original Headers: {outgoing_headers}")
+
+        lower_auth = auth
         # If auth is a dict, it means custom headers (e.g., Bearer token)
         if isinstance(auth, dict):
-            outgoing_headers.update(auth)
+            # convert keys to lowercase for auth
+            lower_auth = {k.lower(): v for k, v in (auth if auth else {}).items()}
+            # for k, v in auth.items():
+            #     outgoing_headers[k] = v
+            # # if we update then duplicate Bearer can be added to Authorization header
+            outgoing_headers.update(lower_auth)
             auth_obj = None
         else: # It's an httpx.Auth object (e.g., DigestAuth)
-            auth_obj = auth
+            auth_obj = lower_auth
+        logger.debug(f"Final Outgoing Headers: {outgoing_headers}")
 
         url = httpx.URL(target_url)
         
@@ -219,6 +234,7 @@ async def _forward_request(
         )
         
         logger.debug(f"Forwarding to {service_name}: {rp_req.method} {rp_req.url} Headers: {rp_req.headers}")
+        logger.debug(f"Authorization: {rp_req.headers.get('Authorization')}")
         
         # Send the request and stream the response
         rp_resp = await http_client.send(rp_req, stream=True)
@@ -278,6 +294,56 @@ async def proxy_yacy(request: Request):
     
     return await _forward_request(target_url, request, http_client=yacy_http_client, service_name="Yacy")
 
+
+# --- Ollama-LiteLLM Proxy Endpoints ---
+@app.api_route("/ollama-litellm/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def proxy_litellm(request: Request, path: str):
+    if not app_config.LITELLM_HOST_URL or not app_config.OLLAMA_HOST_URL:
+        logger.error("Ollama-LiteLLM service not configured.")
+        raise HTTPException(status_code=503, detail="Ollama-LiteLLM Service Unavailable (Not Configured)")
+
+    if path.startswith("v1/chat/completions") or path.startswith("v1/completions"):
+        # Redirect to LiteLLM for these paths
+        target_url = f"{app_config.LITELLM_HOST_URL.rstrip('/')}/{path}"
+        if request.url.query:
+            target_url += f"?{request.url.query}"
+
+        auth_headers = {}
+        if app_config.LITELLM_API_KEY:
+            auth_headers["Authorization"] = f"Bearer {app_config.LITELLM_API_KEY}"
+        else:
+            logger.warning("LITELLM_API_KEY not set, LiteLLM request might fail.")
+        
+        return await _forward_request(target_url, request, http_client=litellm_http_client, auth=auth_headers, service_name="LiteLLM")
+    
+    # Otherwise, forward to Ollama
+    target_url = f"{app_config.OLLAMA_HOST_URL.rstrip('/')}/{path}"
+    if request.url.query:
+        target_url += f"?{request.url.query}"
+
+    return await _forward_request(target_url, request, http_client=litellm_http_client, service_name="Ollama")
+
+
+# --- LiteLLM Proxy Endpoints ---
+@app.api_route("/litellm/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def proxy_litellm(request: Request, path: str):
+    if not app_config.LITELLM_HOST_URL:
+        logger.error("LiteLLM service not configured.")
+        raise HTTPException(status_code=503, detail="LiteLLM Service Unavailable (Not Configured)")
+
+    target_url = f"{app_config.LITELLM_HOST_URL.rstrip('/')}/{path}"
+    if request.url.query:
+        target_url += f"?{request.url.query}"
+
+    auth_headers = {}
+    if app_config.LITELLM_API_KEY:
+        auth_headers["Authorization"] = f"Bearer {app_config.LITELLM_API_KEY}"
+    else:
+        logger.warning("LITELLM_API_KEY not set, LiteLLM request might fail.")
+    
+    return await _forward_request(target_url, request, http_client=litellm_http_client, auth=auth_headers, service_name="LiteLLM")
+
+
 # --- Meilisearch Proxy Endpoints ---
 MEILI_PATHS = [
     "/indexes",             # POST, GET
@@ -330,6 +396,10 @@ if __name__ == "__main__":
         logger.info(f"Yacy backend: {app_config.YACY_HOST_URL}")
     if app_config.MEILISEARCH_HOST_URL:
         logger.info(f"Meilisearch backend: {app_config.MEILISEARCH_HOST_URL}")
+    if app_config.LITELLM_HOST_URL:
+        logger.info(f"LiteLLM backend: {app_config.LITELLM_HOST_URL}")
+    if app_config.OLLAMA_HOST_URL:
+        logger.info(f"Ollama backend: {app_config.OLLAMA_HOST_URL}")
     
     uvicorn.run(
         "fastapi_proxy:app", # app object in fastapi_proxy.py

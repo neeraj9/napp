@@ -1,16 +1,24 @@
 {
     "models": [
         {
-            "name": "orieg/gemma3-tools:27b-it-qat",
-            "model": "orieg/gemma3-tools:27b-it-qat"
+            "name": "ollama/orieg/gemma3-tools:27b-it-qat",
+            "model": "ollama/orieg/gemma3-tools:27b-it-qat"
         },
         {
-            "name": "qwen3-coder:30b",
-            "model": "qwen3-coder:30b"
+            "name": "ollama/gpt-oss:20b",
+            "model": "ollama/gpt-oss:20b"
         },
         {
-            "name": "claude-haiku-4-5-20251001",
-            "model": "claude-haiku-4-5-20251001"
+            "name": "ollama/qwen3-coder:30b",
+            "model": "ollama/qwen3-coder:30b"
+        },
+        {
+            "name": "claude/claude-haiku-4-5-20251001",
+            "model": "claude/claude-haiku-4-5-20251001"
+        },
+        {
+            "name": "groq/openai/gpt-oss-120b",
+            "model": "groq/openai/gpt-oss-120b"
         }
     ]
 }

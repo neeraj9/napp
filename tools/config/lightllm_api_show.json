@@ -1,5 +1,5 @@
 {
-    "orieg/gemma3-tools:27b-it-qat": {
+    "ollama/orieg/gemma3-tools:27b-it-qat": {
         "capabilities": [
             "completion"
         ],
@@ -13,7 +13,7 @@
             "gemma3.context_length": 131072
         }
     },
-    "qwen3-coder:30b": {
+    "ollama/qwen3-coder:30b": {
         "capabilities": [
             "completion"
         ],
@@ -27,7 +27,7 @@
             "qwen.context_length": 262144
         }
     },
-    "claude-haiku-4-5-20251001": {
+    "claude/claude-haiku-4-5-20251001": {
         "capabilities": [
             "completion"
         ],
@@ -39,6 +39,34 @@
         },
         "model_info": {
             "anthropic.context_length": 131072
+        }
+    },
+    "groq/openai/gpt-oss-120b": {
+        "capabilities": [
+            "completion"
+        ],
+        "details": {
+            "family": "groq",
+            "families": [
+                "groq"
+            ]
+        },
+        "model_info": {
+            "groq.context_length": 131072
+        }
+    },
+    "ollama/gpt-oss:20b": {
+        "capabilities": [
+            "completion"
+        ],
+        "details": {
+            "family": "gpt",
+            "families": [
+                "gpt"
+            ]
+        },
+        "model_info": {
+            "gpt.context_length": 131072
         }
     }
 }

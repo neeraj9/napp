@@ -228,10 +228,14 @@ async def _forward_request(
     http_client: httpx.AsyncClient,
     # auth: Optional[Union[httpx.Auth, Dict[str, str]]] = None, # Can be httpx.Auth or custom headers
     auth: Optional[Dict[str, str]] = None, # Can be httpx.Auth or custom headers
-    service_name: str = "upstream"
+    service_name: str = "upstream",
+    request_content: bytes = None
 ):
     try:
-        content = await request.body()
+        if not request_content:
+            content = await request.body()
+        else:
+            content = request_content
         
         # Prepare headers for the outgoing request
         outgoing_headers = {
@@ -386,7 +390,12 @@ async def proxy_litellm(request: Request, path: str):
         else:
             logger.warning("LITELLM_API_KEY not set, LiteLLM request might fail.")
         
-        return await _forward_request(target_url, request, http_client=litellm_http_client, auth=auth_headers, service_name="LiteLLM")
+        # if model is claude then pick temperature and remove top_p if both are present
+        request_content = await request.body()
+        if request_content:
+            request_content = patch_request_content_for_llm(request_id, request_content)
+        
+        return await _forward_request(target_url, request, http_client=litellm_http_client, auth=auth_headers, service_name="LiteLLM", request_content=request_content)
     
     # Otherwise, forward to Ollama
     target_url = f"{app_config.OLLAMA_HOST_URL.rstrip('/')}/{path}"
@@ -395,6 +404,26 @@ async def proxy_litellm(request: Request, path: str):
 
     return await _forward_request(target_url, request, http_client=litellm_http_client, service_name="Ollama")
 
+def patch_request_content_for_llm(request_id: str, request_content: bytes) -> bytes:
+    try:
+        body_json = json.loads(request_content)
+        model_name: str = body_json.get("model", "")
+        # if model is claude then pick temperature and remove top_p if both are present
+        # if "claude" in model_name.lower():
+        if model_name.lower().strip().startswith("claude"):
+            # If both temperature and top_p are present, remove top_p
+            if "temperature" in body_json and "top_p" in body_json:
+                del body_json["top_p"]
+                logger.info(f"[{request_id}] Removed top_p for Claude model in request")
+            # We dont need this: Ensure temperature is set to a default if not present
+            # if "temperature" not in body_json:
+            #     body_json["temperature"] = 0.7 # Default temperature for Claude
+            #     logger.info(f"[{request_id}] Set default temperature for Claude model in request")
+        # Re-encode the modified body
+        request_content = json.dumps(body_json).encode('utf-8')
+    except json.JSONDecodeError:
+        logger.warning(f"[{request_id}] Could not decode JSON body for model adjustments")
+    return request_content
 
 # --- LiteLLM Proxy Endpoints ---
 @app.api_route("/litellm/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])

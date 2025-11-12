@@ -131,8 +131,9 @@ The Proxy Server is a unified API gateway that provides a single entry point for
 |------|---------|----------|
 | `lightllm_api_version.json` | Ollama API version response | `tools/config/` |
 | `lightllm_api_tags.json` | Ollama API models/tags response | `tools/config/` |
+| `lightllm_api_show.json` | Ollama API model details response | `tools/config/` |
 
-These files are loaded at startup and served for `/ollama-litellm/api/version` and `/ollama-litellm/api/tags` endpoints respectively.
+These files are loaded at startup and served for `/ollama-litellm/api/version`, `/ollama-litellm/api/tags`, and `/ollama-litellm/api/show` endpoints respectively.
 
 ### 3.2 Logging System
 
@@ -254,11 +255,12 @@ Github copilot needs at least the following interfaces from Ollama:
 
 - GET /ollama-litellm/api/version (served from Ollama)
 - GET /ollama-litellm/api/tags (served from static JSON file)
+- POST /ollama-litellm/api/show (served from static JSON file)
 - POST http://localhost:8000/v1/chat/completions
 - Other calls are forwarded to Ollama
 
 Note:
-- api/tags is served from static json file for tighter control and allow serving non-ollama models as well.
+- api/tags and api/show are served from static json files for tighter control and allow serving non-ollama models as well.
 
 The default port used by proxy is 8882, so we can setup
 ollama endpoint as follows.
@@ -271,7 +273,8 @@ ollama endpoint as follows.
 
 **Routing Logic:**
 - Paths `api/version` → Static JSON response from `tools/config/lightllm_api_version.json`
-- Paths `api/tags` → Static JSON response from `tools/config/lightllm_api_tags.json`
+- Paths `api/tags` (GET) → Static JSON response from `tools/config/lightllm_api_tags.json`
+- Paths `api/show` (POST) → Static JSON response from `tools/config/lightllm_api_show.json` (model-specific)
 - Paths starting with `v1/chat/completions` → LiteLLM
 - Paths starting with `v1/completions` → LiteLLM
 - All other paths → Ollama
@@ -282,12 +285,55 @@ ollama endpoint as follows.
 
 **Examples:**
 ```
+GET /ollama-litellm/api/tags
+→ Returns static JSON with all available models
+
+POST /ollama-litellm/api/show
+Body: {"model":"qwen3-coder:30b"}
+→ Returns model-specific details from static JSON
+
 POST /ollama-litellm/v1/chat/completions
 → Proxied to: {LITELLM_HOST_URL}/v1/chat/completions
 
 POST /ollama-litellm/api/generate
 → Proxied to: {OLLAMA_HOST_URL}/api/generate
 ```
+
+#### 4.2.1 API Show Endpoint Details
+
+**Endpoint:** `POST /ollama-litellm/api/show`
+
+**Request Format:**
+```json
+{
+  "model": "model-name"
+}
+```
+
+**Response Format:**
+```json
+{
+  "model": "model-name",
+  "capabilities": ["completion"],
+  "details": {
+    "family": "model-family",
+    "families": ["model-family"]
+  },
+  "model_info": {
+    "family.context_length": 131072
+  }
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Model name not specified in request body
+- `404 Not Found`: Model not found in configuration
+- `500 Internal Server Error`: JSON parsing or processing error
+
+**Configuration:**
+- Model data loaded from `tools/config/lightllm_api_show.json` at startup
+- Each model entry contains capabilities, details, and model-specific information
+- Supports any model defined in the JSON file, not limited to Ollama models
 
 ### 4.3 LiteLLM Proxy
 
@@ -366,7 +412,8 @@ POST /indexes/movies/search
 ┌─────────────────────────────────────────────────────────┐
 │ 4. Route Matching                                       │
 │    - Match path to service endpoint                     │
-│    - Check for static response paths (api/version, tags)│
+│    - Check for static response paths (api/version,      │
+│      api/tags, api/show)                                │
 │    - Check if service is configured                     │
 │    - Return 503 if not configured                       │
 └──────────────────┬──────────────────────────────────────┘
@@ -374,6 +421,7 @@ POST /indexes/movies/search
 ┌─────────────────────────────────────────────────────────┐
 │ 5. Static Response OR Request Transformation            │
 │    - If static path: Return loaded JSON data            │
+│    - For api/show: Extract model name and lookup        │
 │    - Otherwise: Continue with request forwarding        │
 └──────────────────┬──────────────────────────────────────┘
                    ▼
@@ -668,7 +716,19 @@ curl -X GET "http://localhost:8882/health"
 curl -X GET "http://localhost:8882/indexes"
 ```
 
-**Test Ollama:**
+**Test Ollama Tags:**
+```bash
+curl -X GET "http://localhost:8882/ollama-litellm/api/tags"
+```
+
+**Test Ollama Show (Model Details):**
+```bash
+curl -X POST "http://localhost:8882/ollama-litellm/api/show" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen3-coder:30b"}'
+```
+
+**Test Ollama Generate:**
 ```bash
 curl -X POST "http://localhost:8882/ollama-litellm/api/generate" \
   -H "Content-Type: application/json" \
@@ -837,6 +897,7 @@ curl http://localhost:8000/health
 
 4. **Caching Layer**
    - Cache GET requests
+   - Cache static responses (api/tags, api/show)
    - Configurable TTL
    - Redis backend support
 
@@ -859,6 +920,11 @@ curl http://localhost:8000/health
    - Single sign-on integration
    - JWT validation
    - OAuth2 proxy
+
+9. **Dynamic Model Configuration**
+   - Hot-reload of model configuration files
+   - API endpoint to update models without restart
+   - Model validation and schema enforcement
 
 ### 12.2 API Router Refactoring
 

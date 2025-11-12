@@ -87,6 +87,7 @@ request_id_var: ContextVar[str] = ContextVar("request_id")
 
 # Global variables for Ollama API static responses
 ollama_tags_data: dict = {}
+ollama_show_data: dict = {}
 
 # --- Logging Setup ---
 # Custom filter to add request_id to log records
@@ -160,7 +161,7 @@ litellm_http_client = httpx.AsyncClient(timeout=app_config.REQUEST_TIMEOUT, foll
 
 @app.on_event("startup")
 async def startup_event():
-    global ollama_tags_data
+    global ollama_tags_data, ollama_show_data
     
     logger.info("Application startup: Initializing HTTP client.")
     # Client is already initialized globally, could do more here if needed
@@ -175,9 +176,19 @@ async def startup_event():
         else:
             logger.warning(f"Tags file not found: {tags_file}")
             ollama_tags_data = {"models": []}
+            
+        show_file = Path("config/lightllm_api_show.json")
+        if show_file.exists():
+            with open(show_file, 'r') as f:
+                ollama_show_data = json.load(f)
+            logger.info(f"Loaded Ollama show data from {show_file}")
+        else:
+            logger.warning(f"Show file not found: {show_file}")
+            ollama_show_data = {}
     except Exception as e:
-        logger.error(f"Error loading tags file: {e}")
+        logger.error(f"Error loading Ollama API files: {e}")
         ollama_tags_data = {"models": []}
+        ollama_show_data = {}
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -332,6 +343,36 @@ async def proxy_litellm(request: Request, path: str):
     if path == "api/tags":
         logger.info(f"[{request_id}] Serving static response for /ollama-litellm/api/tags")
         return JSONResponse(content=ollama_tags_data)
+    
+    if path == "api/show" and request.method == "POST":
+        logger.info(f"[{request_id}] Serving static response for /ollama-litellm/api/show")
+        try:
+            body = await request.json()
+            model_name = body.get("model")
+            
+            if not model_name:
+                logger.warning(f"[{request_id}] No model specified in api/show request")
+                raise HTTPException(status_code=400, detail="Model name is required")
+            
+            if model_name not in ollama_show_data:
+                logger.warning(f"[{request_id}] Model '{model_name}' not found in show data")
+                raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+            
+            model_info = ollama_show_data[model_name]
+            # Add the model name to the response
+            # response_data = {"model": model_name, **model_info}
+            response_data = model_info
+            
+            logger.info(f"[{request_id}] Returning show data for model: {model_name}")
+            return JSONResponse(content=response_data)
+        except json.JSONDecodeError:
+            logger.error(f"[{request_id}] Invalid JSON in api/show request")
+            raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[{request_id}] Error processing api/show request: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
 
     if path.startswith("v1/chat/completions") or path.startswith("v1/completions"):
         # Redirect to LiteLLM for these paths

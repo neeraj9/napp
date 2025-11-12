@@ -1,0 +1,44 @@
+{
+    "orieg/gemma3-tools:27b-it-qat": {
+        "capabilities": [
+            "completion"
+        ],
+        "details": {
+            "family": "gemma3",
+            "families": [
+                "gemma3"
+            ]
+        },
+        "model_info": {
+            "gemma3.context_length": 131072
+        }
+    },
+    "qwen3-coder:30b": {
+        "capabilities": [
+            "completion"
+        ],
+        "details": {
+            "family": "qwen",
+            "families": [
+                "qwen"
+            ]
+        },
+        "model_info": {
+            "qwen.context_length": 262144
+        }
+    },
+    "claude-haiku-4-5-20251001": {
+        "capabilities": [
+            "completion"
+        ],
+        "details": {
+            "family": "anthropic",
+            "families": [
+                "anthropic"
+            ]
+        },
+        "model_info": {
+            "anthropic.context_length": 131072
+        }
+    }
+}

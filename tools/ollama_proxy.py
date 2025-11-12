@@ -1,3 +1,6 @@
+# (c) 2025 Neeraj Sharma. All rights reserved.
+# Licensed under the MIT License. See LICENSE in the project root for license information.
+
 import copy
 import os
 import json

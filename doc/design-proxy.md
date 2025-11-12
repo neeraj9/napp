@@ -252,7 +252,7 @@ in thinking that its talking to Ollama when its talking to LiteLLM.
 
 Github copilot needs at least the following interfaces from Ollama:
 
-- GET /ollama-litellm/api/version (served from static JSON file)
+- GET /ollama-litellm/api/version (served from Ollama)
 - GET /ollama-litellm/api/tags (served from static JSON file)
 - POST http://localhost:8000/v1/chat/completions
 - Other calls are forwarded to Ollama

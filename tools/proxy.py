@@ -86,7 +86,6 @@ class AppConfig(BaseSettings):
 request_id_var: ContextVar[str] = ContextVar("request_id")
 
 # Global variables for Ollama API static responses
-ollama_version_data: dict = {}
 ollama_tags_data: dict = {}
 
 # --- Logging Setup ---
@@ -161,25 +160,12 @@ litellm_http_client = httpx.AsyncClient(timeout=app_config.REQUEST_TIMEOUT, foll
 
 @app.on_event("startup")
 async def startup_event():
-    global ollama_version_data, ollama_tags_data
+    global ollama_tags_data
     
     logger.info("Application startup: Initializing HTTP client.")
     # Client is already initialized globally, could do more here if needed
     
     # Load Ollama API response files
-    try:
-        version_file = Path("config/lightllm_api_version.json")
-        if version_file.exists():
-            with open(version_file, 'r') as f:
-                ollama_version_data = json.load(f)
-            logger.info(f"Loaded Ollama version data from {version_file}")
-        else:
-            logger.warning(f"Version file not found: {version_file}")
-            ollama_version_data = {"version": "0.0.0"}
-    except Exception as e:
-        logger.error(f"Error loading version file: {e}")
-        ollama_version_data = {"version": "0.0.0"}
-    
     try:
         tags_file = Path("config/lightllm_api_tags.json")
         if tags_file.exists():
@@ -340,13 +326,9 @@ async def proxy_litellm(request: Request, path: str):
     request_id = request_id_var.get(None)
 
     # Serve static responses for Ollama API endpoints for
-    # a) tighter control on model listing and version
+    # a) tighter control on model listing
     # b) allow serving non-ollama models as well which can be hosted on other services but
     #    served via LightLLM.
-    if path == "api/version":
-        logger.info(f"[{request_id}] Serving static response for /ollama-litellm/api/version")
-        return JSONResponse(content=ollama_version_data)
-    
     if path == "api/tags":
         logger.info(f"[{request_id}] Serving static response for /ollama-litellm/api/tags")
         return JSONResponse(content=ollama_tags_data)

@@ -415,10 +415,6 @@ def patch_request_content_for_llm(request_id: str, request_content: bytes) -> by
             if "temperature" in body_json and "top_p" in body_json:
                 del body_json["top_p"]
                 logger.info(f"[{request_id}] Removed top_p for Claude model in request")
-            # We dont need this: Ensure temperature is set to a default if not present
-            # if "temperature" not in body_json:
-            #     body_json["temperature"] = 0.7 # Default temperature for Claude
-            #     logger.info(f"[{request_id}] Set default temperature for Claude model in request")
         # Re-encode the modified body
         request_content = json.dumps(body_json).encode('utf-8')
     except json.JSONDecodeError:
